@@ -57,6 +57,28 @@ for f in /data/.openclaw/openclaw.json.bak.[2-9] \
     rm -f "$f"
 done
 
+# 5) Agent session bak files — keep newest 3 per session UUID, delete the rest.
+#    alphaclaw writes <uuid>.jsonl.bak-<seq>-<ms> on every session mutation; they
+#    accumulate forever. The live <uuid>.jsonl is the source of truth; bak files
+#    are crash-recovery snapshots. 3 is enough headroom for any plausible rollback.
+SESS_DIR=/data/.openclaw/agents/main/sessions
+if [ -d "$SESS_DIR" ]; then
+    echo "[startup] === Cleanup: session bak files (keep newest 3 per UUID) ==="
+    BAK_BEFORE=$(ls "$SESS_DIR"/*.jsonl.bak-* 2>/dev/null | wc -l)
+    if [ "$BAK_BEFORE" -gt 0 ]; then
+        ls "$SESS_DIR"/*.jsonl.bak-* 2>/dev/null \
+            | sed -E 's|^(.*)\.jsonl\.bak-.*$|\1|' \
+            | sort -u \
+            | while IFS= read -r prefix; do
+                ls -1t "${prefix}".jsonl.bak-* 2>/dev/null | tail -n +4 | xargs -r rm -f
+              done
+        BAK_AFTER=$(ls "$SESS_DIR"/*.jsonl.bak-* 2>/dev/null | wc -l)
+        echo "[startup] bak files: $BAK_BEFORE → $BAK_AFTER"
+    else
+        echo "[startup] no bak files found"
+    fi
+fi
+
 echo "[startup] === Post-cleanup disk usage ==="
 df -h /data 2>&1 || true
 du -sh /data/.openclaw/* /data/.openclaw/.[!.]* 2>/dev/null | sort -h | tail -20 || true
